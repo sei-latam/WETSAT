@@ -14,6 +14,18 @@
 #' 
 classify_water_surface <- function(s1_data, rf_model, output_dir = "./RESULTS/Test", save = FALSE, plots = c(1, 2), crs.def = "+proj=utm +zone=17 +datum=WGS84 +units=m +no_defs") {
   
+  if(class(rf_model)[2]=="randomForest"){
+    cli::cli_bullets(c("v"= "The first column is a {.cls {class(rf_model)[2]}} class"))
+    cli::cli_h1("Random Forest Model Information \n The model has been trained with the following parameters:")
+    cli::cat_print(rownames(rf_model$importance))
+  } else{
+    cli::cli_abort(c(
+      "!" = "{.arg rf_model} must be a randomForest object.",
+      "i" = "You provided an object of class {.cls {class(rf_model)}}."
+    ))
+  }
+  
+  
   # Create output directory if it doesn't exist
   if(!dir.exists(output_dir)) dir.create(output_dir)
 
