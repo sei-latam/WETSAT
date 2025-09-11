@@ -14,6 +14,117 @@
 #' 
 classify_water_surface <- function(s1_data, rf_model, output_dir = "./RESULTS/Test", save = FALSE, plots = c(1, 2), crs.def = "+proj=utm +zone=17 +datum=WGS84 +units=m +no_defs") {
   
+  # Validate s1_data input
+  if(missing(s1_data)) {
+    cli::cli_abort(c(
+      "!" = "{.arg s1_data} is required but missing.",
+      "i" = "Please provide Sentinel-1 raster data."
+    ))
+  }
+  
+  if(!inherits(s1_data, c("SpatRaster", "RasterStack", "RasterBrick"))) {
+    cli::cli_abort(c(
+      "!" = "{.arg s1_data} must be a raster object.",
+      "i" = "You provided an object of class {.cls {class(s1_data)}}.",
+      "i" = "Expected classes: {.cls SpatRaster}, {.cls RasterStack}, or {.cls RasterBrick}."
+    ))
+  }
+  
+  # Check if s1_data has enough layers/bands
+  n_layers <- terra::nlyr(s1_data)
+  if(n_layers < 2) {
+    cli::cli_warn(c(
+      "!" = "Sentinel-1 data has only {n_layers} layer{?s}.",
+      "i" = "Typical Sentinel-1 data should have at least 2 polarizations (VV, VH).",
+      "i" = "Classification accuracy may be reduced."
+    ))
+  }
+  
+  # Validate rf_model
+  if(missing(rf_model)) {
+    cli::cli_abort(c(
+      "!" = "{.arg rf_model} is required but missing.",
+      "i" = "Please provide a trained Random Forest model."
+    ))
+  }
+  
+  if(!inherits(rf_model, "randomForest")) {
+    cli::cli_abort(c(
+      "!" = "{.arg rf_model} must be a randomForest object.",
+      "i" = "You provided an object of class {.cls {class(rf_model)}}."
+    ))
+  }
+  
+  # Check if model variables match data layers
+  model_vars <- rownames(rf_model$importance)
+  data_vars <- names(s1_data)
+  
+  missing_vars <- setdiff(model_vars, data_vars)
+  if(length(missing_vars) > 0) {
+    cli::cli_abort(c(
+      "!" = "Model requires variable{?s} not found in data: {.val {missing_vars}}",
+      "i" = "Available variables in data: {.val {data_vars}}",
+      "i" = "Please ensure data contains all required model variables."
+    ))
+  }
+  
+  # Check if output directory is writable
+  parent_dir <- dirname(output_dir)
+  if(!dir.exists(parent_dir)) {
+    cli::cli_warn(c(
+      "!" = "Parent directory {.path {parent_dir}} does not exist.",
+      "i" = "Attempting to create directory structure."
+    ))
+  }
+  
+  # Validate CRS
+  if(!is.character(crs.def) || length(crs.def) != 1) {
+    cli::cli_abort(c(
+      "!" = "{.arg crs.def} must be a single character string.",
+      "i" = "You provided: {.val {crs.def}}"
+    ))
+  }
+  
+  # Check CRS validity
+  tryCatch({
+    terra::crs(crs.def)
+  }, error = function(e) {
+    cli::cli_abort(c(
+      "!" = "Invalid CRS definition: {.val {crs.def}}",
+      "i" = "Error: {e$message}"
+    ))
+  })
+  
+  
+  # Success message for model validation
+  if(inherits(rf_model, "randomForest")) {
+    cli::cli_bullets(c("v" = "Random Forest model validated successfully"))
+    cli::cli_h1("Random Forest Model Information")
+    cli::cli_text("The model has been trained with the following variables:")
+    cli::cli_ul(rownames(rf_model$importance))
+    
+    # Model performance info
+    if(!is.null(rf_model$err.rate)) {
+      oob_error <- rf_model$err.rate[rf_model$ntree, "OOB"]
+      cli::cli_bullets(c("i" = "Out-of-bag error rate: {.val {round(oob_error * 100, 2)}%}"))
+    }
+  }
+  
+  # Create output directory with error handling
+  tryCatch({
+    if(!dir.exists(output_dir)) {
+      dir.create(output_dir, recursive = TRUE)
+      cli::cli_bullets(c("v" = "Created output directory: {.path {output_dir}}"))
+    }
+  }, error = function(e) {
+    cli::cli_abort(c(
+      "!" = "Failed to create output directory: {.path {output_dir}}",
+      "i" = "Error: {e$message}"
+    ))
+  })
+  
+  
+  
   if(class(rf_model)[2]=="randomForest"){
     cli::cli_bullets(c("v"= "The first column is a {.cls {class(rf_model)[2]}} class"))
     cli::cli_h1("Random Forest Model Information \n The model has been trained with the following parameters:")
